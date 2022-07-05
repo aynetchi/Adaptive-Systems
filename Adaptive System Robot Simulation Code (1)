@@ -1,0 +1,778 @@
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+import statistics        
+
+# A class to create our blocks and their attributes
+class Blocks(object):
+    # So that instances can be reused with variant valoues in our lisr
+    def __new__(cls, *args, **kwargs):
+        instance = super(Blocks, cls).__new__(cls)
+        return instance
+    
+    def __init__(self, position_X, position_Y, valid_path, table):
+        # Poistion of the block
+        self.position_X = position_X
+        self.position_Y = position_Y
+        # If the path is valid for robot to move Bool
+        self.valid_path = valid_path 
+        # If there is a table in current block
+        self.table = table 
+  
+    # A class tp create the retaurant map
+class Create_Maze:
+    
+    def __init__(self):
+        # Where our block attributes will be stored to create our map
+        self.maze = []
+        
+    # Creating blocks that are invalid for robot movement
+    def create_invalid_path(self, idx):
+        for i in self.maze[idx]:
+            i.valid_path = False
+            i.table = False
+    
+    # Creating path where the robot can freely move around
+    def create_valid_path(self, idx):
+        a = 0
+        for i in self.maze[idx]:
+            a += 1
+            i.valid_path = True
+            i.table = False
+            if a == 1 or a == 23:
+                i.valid_path = False
+     
+    # Creating path where there is a mixture of obstacles and valid paths
+    def create_simi_valid_path(self, idx):
+        a = 0
+        for i in self.maze[idx]:
+            a += 1
+            i.valid_path = False
+            i.table = False
+            if a in (2, 6, 10, 14, 18, 22):
+                i.valid_path = True
+    
+    # Creating Tables
+    def create_tables(self, idx):
+        a = 0
+        for i in self.maze[idx]:
+            a += 1
+            i.table = False
+            if a in (2, 6, 10, 14, 18, 22):
+                i.valid_path = True
+            if a in (4, 8, 12, 16, 20):
+                i.table = True
+    
+    # Adding block positions
+    def add_positions(self):
+        x = 0
+        y = 0
+        for i in self.maze:
+            
+            y = 0
+            for a in i:
+
+                a.position_X = x
+                a.position_Y = y
+                y += 1
+            x += 1
+      
+    # Setting up the maze 
+    def maze_setup(self):
+        self.add_positions()
+        for i in range(23):
+            if i in (1, 23):
+                self.create_invalid_path(i-1)
+            if i in (2, 6, 10, 14, 18, 22):
+                self.create_valid_path(i-1)
+            if i in (3, 5, 7, 9, 11, 13, 15, 17, 19, 21):
+                self.create_simi_valid_path(i-1)
+            if i in (4, 8, 12, 16, 20):
+                self.create_tables(i-1)
+      
+    # printing the our map
+    def show_maze(self, idx):
+        maze = self.maze
+        for i in maze[idx]:
+            if i.table == True:
+                print("TABLE" ,i.position_X-1, i.position_Y-1)
+            if i.valid_path == True:
+                print("VALID" ,i.position_X-1, i.position_Y-1)
+            if i.valid_path == False and i.table == False:
+                print("INVALID" ,i.position_X-1, i.position_Y-1)
+                
+""" MAZE CLASS """
+                
+class Run_Maze:
+    
+    def __init__(self, maze):
+        # our maze map
+        self.maze = maze
+        # probility of disturbance after each movement
+        self.dist_prob = 0 
+        
+        # Positioning: Current positions
+        self.current_position_X = 21
+        self.current_position_Y = 21
+        # Positioning: Previous positions
+        self.previous_position_X = 21
+        self.previous_position_Y = 21
+        # Distance and Angles for current position
+        self.current_distance = 0
+        self.current_angle = 0
+        # Disturbance data 
+        self.disturbance = False
+        self.reroute_val = False
+        # Position of the table where the robot must send the food  
+        self.target_table_X = 3
+        self.target_table_Y = 3
+        # Data gathering which is updated 
+        self.path_mapping = []
+        self.move_num = 0
+        self.wait_time = 0
+        # Optimal Route
+        self.optimal_delivey_time = self.return_optimal_route()
+        
+    # Returns the optimal route that can be taken there is no ddiisturbance
+    def return_optimal_route(self):
+        
+        x = abs(self.current_position_X - self.target_table_X)
+        y = abs(self.current_position_Y - self.target_table_Y)
+        optimal_route = x + y - 2 
+        if self.target_table_Y != 19 or self.target_table_X != 19:
+            return optimal_route+3
+        return optimal_route
+                
+    # Select a random table
+    def select_table(self):
+        random_tables = []
+        for i in self.maze:
+            for a in i:
+                if a.table == True:
+                    random_tables.append((a.position_X, a.position_Y))
+        self.target_table_X, self.target_table_Y = random.choice(random_tables)      
+    
+    # Validate if we will face disturbance 
+    def has_disturbance(self):
+        if self.move_num == 0:
+            return False
+        val = [True, False]
+        prob_1 = self.dist_prob
+        prob_2 = 1 - prob_1
+        distribution = [prob_1, prob_2]
+        has_disturbance = random.choices(val, distribution)[0]
+        
+        return has_disturbance 
+        
+    # Calculates distance and angle for current and (1=right, 0=left, 2=up, 3=down)
+    def find_dist_ang(self, idx):
+        current_X = self.current_position_X
+        current_Y = self.current_position_Y
+        
+        if idx == False:
+            pass
+        elif idx == 0:
+            current_X -= 1
+        elif idx == 1:
+            current_X += 1
+        elif idx == 2:
+            current_Y -= 1
+        elif idx == 3:
+            current_Y -= 1
+        
+        width = abs(current_Y - self.target_table_Y)
+        height = abs(current_X - self.target_table_X)
+        distances_squared = height**2 + width**2
+        distance = np.sqrt(distances_squared)
+        angle = np.sin(height/distance)
+        
+        return distance, angle
+    
+    # Returns our block attributes for 4 directions in respect to current block
+    def paths(self):
+        left_path = self.maze[self.current_position_X][self.current_position_Y - 1]
+        right_path = self.maze[self.current_position_X][self.current_position_Y + 1]
+        up_path = self.maze[self.current_position_X - 1][self.current_position_Y]
+        down_path = self.maze[self.current_position_X + 1][self.current_position_Y]
+        return left_path, right_path, up_path, down_path 
+    
+    # returns the indexes of valid paths that can be taken and the index of a blocked path by
+    # disturbance if any..
+    def valid_paths(self):    
+        left_path, right_path, up_path, down_path = self.paths()
+        paths = [left_path, right_path, up_path, down_path]
+        val = self.has_disturbance()
+        count = -1 
+        idx = 100 
+        valid_paths = []
+
+        for i in paths:
+            count += 1 
+            if i.valid_path == True:
+                valid_paths.append(count)
+        
+        random_item = random.choice(valid_paths)
+        if val == True:
+            self.disturbance = True 
+            valid_paths.remove(random_item)
+            idx = random_item
+
+                
+        return  valid_paths, len(valid_paths), idx
+    
+    # Returns distances/angles for all available paths along with their indexes
+    def path_metrics(self):
+        valid_paths, _, _ = self.valid_paths()
+        distances = []
+        angles = []
+
+        for idx in valid_paths:
+            dist, ang = self.find_dist_ang(idx)
+            distances.append(dist)
+            angles.append(ang)
+        
+        return valid_paths, distances, angles
+    
+    # Used for algorithm 2 to minimize vertical/horizontal distance
+    def XY_minimizer(self):
+        valid_paths, _, _ =  self.path_metrics()
+        val = []
+            
+        if 0 in tuple(valid_paths) and self.current_position_Y > self.target_table_Y:
+            val.append(0)
+        if 1 in tuple(valid_paths) and self.current_position_Y > self.target_table_Y:
+            val.append(1)
+        if 2 in tuple(valid_paths) and self.current_position_X > self.target_table_X:
+            val.append(2)
+        if 3 in tuple(valid_paths) and self.current_position_X > self.target_table_X:
+            val.append(3)
+        return val
+    
+    # Used in algorithm 2 to randomly select possible paths fulfill conditions
+    def random_selector(self):
+        valid_paths, distances, angles =  self.path_metrics()
+        min_dist = valid_paths[distances.index(min(distances))]
+        min_ang = valid_paths[angles.index(min(angles))]
+        val = self.XY_minimizer()
+        if len(val) == 0:
+            
+            return random.sample([min_dist, min_ang, min_ang],1)[0]
+           
+        else:
+        
+            return min(val)
+        
+    # Returns True if there are both horzontal and validpaths to take otherwise returns False
+    def horizontal_vertical(self):
+        valid_paths, _, _ = self.path_metrics()
+        vertical = False
+        horizontal = False
+        for i in valid_paths:
+            if i in (0, 1):
+                vertical = True 
+            else:
+                horizontal = True
+        
+        if vertical == True and horizontal == True:
+            return True 
+        else:
+            return False
+    
+    # Used in algorithm 1 to use min distance and angle choices from possible paths
+    def path_selections(self):
+        valid_paths, distances, angles = self.path_metrics()
+        min_distance = valid_paths[(distances.index(min(distances)))]
+        min_angle = valid_paths[(angles.index(min(angles)))]
+        max_angle = valid_paths[(angles.index(max(angles)))]
+        return min_distance, min_angle, max_angle, len(valid_paths)
+    
+    # Ensures that horizontal/verti9cal direction is changed following the trigger of reroute algorithm
+    def change_direction(self, vertical):
+        valid_paths, distances, angles = self.path_metrics()
+        vertical_idx = []
+        horizontal_idx = []
+        vert_dist = []
+        hor_dist = []
+        for i in valid_paths:
+            if i in (0, 1):
+                vertical_idx.append(i)
+                vert_dist.append(distances[valid_paths.index(i)])
+            if i in (2, 3):
+                horizontal_idx.append(i)
+                hor_dist.append(distances[valid_paths.index(i)])
+ 
+        if vertical == True and len(vertical_idx) != 0:
+            return vertical_idx[vert_dist.index(min(vert_dist))]
+        elif vertical == False and len(horizontal_idx) != 0:
+            return horizontal_idx[hor_dist.index(min(hor_dist))]
+        else:
+            return random.sample(valid_paths, 1)[0]
+        
+    # determines if movement is vertical or horzontal
+    def is_vertical(self):   
+        for i in self.path_mapping:
+            if i.get("move_num") == self.move_num - 1 and i.get("position_X") == self.current_position_X:
+                return True
+        return False
+
+    # Returns previous positions if they match with move  
+    def previous_position(self, num):
+        for i in self.path_mapping:
+            if i.get("move_num") == self.move_num - num:
+                return i.get("position_X"), i.get("position_Y")
+        return self.previous_position_X, self.previous_position_Y
+   
+    # Retouting algorithm
+    def reroute(self):
+        print()
+        print("DISTURBANCE!!!!!")
+        is_vertical = self.is_vertical() 
+        num = 1
+        
+        for i in range(10): # Max 10 moves used ro reroute
+            num += 1
+            val = self.horizontal_vertical()
+            paths, _, _ = self.path_metrics()
+            if val == False: # Goes in the same path if the direction has not changed
+                self.current_position_X, self.current_position_Y = self.previous_position(num)
+                self.append_data()
+                num += 1
+            elif val == True: # Goes in the oposite direct twice when possible
+                new_direction = self.change_direction(is_vertical)
+                self.update_position(new_direction)
+                self.append_data()
+                self.update_position(new_direction)
+                break
+            
+    # Mechanism to wait 30s for disturbance disapear before rerouting    
+    def timer_algorithm(self):
+            val = [False, True]
+            prob_1 = 0.1
+            prob_2 = 1 - prob_1
+            distribution = [prob_1, prob_2]
+            
+            for i in range(30):
+                wait = random.choices(val, distribution)[0]
+                if wait == False:
+    
+
+                    return i, False
+   
+            return 33, True
+        
+    # Algorithm 2: Reduces X or Y randomly
+    def algorithm2(self):
+        _, _, idx = self.valid_paths()
+        min_distance, min_angle, max_angle, num_paths = self.path_selections()
+        timer, timer_val = self.timer_algorithm()
+        
+        # Waiting when disturbance occures for 30s
+        if idx != 100 and timer_val == False:
+            self.disturbance = True
+            self.wait_time += timer
+            self.update_position(idx)
+        # rerouting
+        elif num_paths == 1:
+            self.disturbance = True 
+            self.reroute_val = True
+            self.reroute()
+            self.wait_time += timer
+        # otherwise fulfilling algorithm 2 in minimizing distance of X or Y [positions]
+        else:
+            random = self.random_selector()
+            self.update_position(random)
+            
+        self.reroute_val = False
+        
+
+    # Algoritjm 2 - Minimize Angle
+    def algorithm1(self):
+        _, _, idx = self.valid_paths()
+        min_distance, min_angle, max_angle, num_paths = self.path_selections()
+        timer, timer_val = self.timer_algorithm()
+        
+        # Waiting when disturbance occures for 30s
+        if idx != 100 and timer_val == False:
+            self.disturbance = True 
+            self.wait_time += timer
+            self.update_position(idx)
+        # rerouting
+        elif num_paths == 1:
+            self.disturbance = True 
+            self.reroute_val = True
+            self.reroute()
+            self.wait_time += timer
+        # prioritise direction if there is a reduction of both distance and angles
+        elif min_distance == min_angle:
+            self.update_position(min_distance)
+            return min_distance
+        # Otherwise select minimum angle
+        else:
+            self.update_position(min_angle)
+            return min_angle
+        
+        self.reroute_val = False
+        
+
+    # Adding data from each round for analysis andd upddating a few things    
+    def append_data(self):
+        
+        is_vertical = self.is_vertical()
+        X = abs(self.current_position_X - self.target_table_X)
+        Y = abs(self.current_position_Y - self.target_table_Y)
+        move_data = {"move_num": self.move_num,
+                     "position_X": self.current_position_X, 
+                     "position_Y": self.current_position_Y, 
+                     "range_X": X,
+                     "range_Y": Y,
+                     "distance": self.current_distance, 
+                     "angle": self.current_angle,
+                     "disturbance": self.disturbance,
+                     "is_vertical": is_vertical,
+                     "reroute": self.reroute_val}
+        
+        self.disturbance = False
+        self.path_mapping.append(move_data)
+        #print(move_data)
+        self.move_num += 1
+        
+
+    # Upddate our position 
+    def update_position(self, new_position_index):
+        if new_position_index == 0:
+            self.current_position_Y -= 1
+        if new_position_index == 1:
+            self.current_position_Y += 1
+        if new_position_index == 2:
+            self.current_position_X -= 1
+        if new_position_index == 3:
+            self.current_position_X += 1
+            
+        self.update_ang_dist()
+      
+    # Updating the angles and distances
+    def update_ang_dist(self):
+        self.previous_distance = self.current_distance
+        self.previous_angle = self.current_angle
+        self.current_distance, self.current_angle = self.find_dist_ang(False)
+
+    # priniting the maze map       
+    def show_maze(self):
+        maze = []
+        for i in self.maze:
+            collum = []
+            for a in i:
+                if a.valid_path == True:
+                    collum.append("O")
+                elif a.table == True:
+                    collum.append("T")
+                else:
+                    collum.append("X")
+            maze.append(collum)
+        return (maze)
+    
+    # print the path taken in current round
+    def show_path(self):
+        maze = self.show_maze()
+        for i in range(len(self.path_mapping)):
+            for a in self.path_mapping:
+                x = a.get("position_X")
+                y = a.get("position_Y")
+                num = a.get("move_num")
+                maze[x][y] = num
+        
+        for i in maze:
+            print(i) 
+            
+    # reset data for new iteration   
+    def reset(self):
+        #self.select_table()
+        self.optimal_delivey_time = self.return_optimal_route()
+        self.path_mapping = []
+        self.move_num = 0
+        self.wait_time = 0
+        self.previous_position_X = 21
+        self.previous_position_Y = 21
+        self.current_position_X = 21
+        self.current_position_Y = 21
+        self.current_distance, self.current_angle = self.find_dist_ang(False)
+
+# A class to analyze data andd measure performance
+class Data_Collection:
+    def __init__(self, run):
+        # importing our to update key data
+        self.run = run
+        # Data from our class in dictionary
+        self.path_mapping = self.run.path_mapping
+        
+        # Data Collection
+        self.velocities = []
+        self.disturbances = []
+        self.times = []
+        self.angles = []
+        self.distances = []
+        self.reroutes = []
+        self.range_X = []
+        self.range_Y = []
+        self.routing_accuracies = []
+        
+        # Updating the target table for each round
+        self.target_table_X = self.run.target_table_X
+        self.target_table_Y = self.run.target_table_Y
+        
+        # othe key data that updates each round
+        self.optimal_route = self.run.optimal_delivey_time
+        self.total_disturbance = 0
+        self.wait_time = self.run.wait_time 
+        self.disturbance = 0
+        self.count_reroute = 0
+        self.distance_covered = 0
+        self.time = 0
+        self.velocity = 0
+        self.routing_accuracy = 0 
+        
+        # Used to map the journey in each round
+        self.move_num = []
+        self.position_X = []
+        self.position_Y = []
+        self.distance = []
+        self.angle = []  
+    
+    # Updating data after each round is completed
+    def update_data(self):
+        self.total_time()
+        self.count_reroutes()
+        self.wait_time = self.run.wait_time 
+        
+        self.distance_covered = self.run.move_num
+        self.optimal_route = self.run.optimal_delivey_time
+        print(self.distance_covered, self.optimal_route)
+        self.routing_accuracy = self.optimal_route/self.distance_covered
+        self.routing_accuracies.append(self.routing_accuracy)
+        
+        self.times.append(self.time)
+        self.reroutes.append(self.count_reroute)
+        self.count_disturbance()
+
+    # Returns time incured due to turns taken 
+    def count_turns(self):
+        count_turns = 0 
+        for i in range(len(self.path_mapping)):
+            if self.path_mapping[i].get("is_vertical") != self.path_mapping[i-1].get("is_vertical"):
+                count_turns += 1
+        return count_turns/2
+
+    # Returns total time taken for delivery
+    def total_time(self):
+        count = self.count_turns()
+        turns = count * 2
+        wait_time = self.run.wait_time
+        total_moves = self.distance_covered
+        self.time = turns + total_moves + wait_time
+   
+        
+    # Returns the number of disturbances faced 
+    def count_disturbance(self):
+        count = 0 
+        for i in self.path_mapping:
+            if i.get("disturbance") == True:
+                count += 1
+        self.disturbances.append(count)
+        self.total_disturbance = count
+    
+   
+    # Returns the number of reroutes faced 
+    def count_reroutes(self):
+        reroute = 0 
+        for i in range(len(self.path_mapping)):
+            if self.path_mapping[i].get("reroute") != self.path_mapping[i-1].get("reroute"):
+                reroute += 1
+        
+        self.count_reroute = reroute/2
+       
+    # upddates key illustate journey taken in eaach roundd
+    def return_data(self):
+        move_num = []
+        range_X = []
+        range_Y = []
+        distance = []
+        angle = []
+        print()
+        for i in self.path_mapping:
+            move_num.append(i.get("move_num"))
+            range_X.append(i.get("range_X"))
+            range_Y.append(i.get("range_Y"))
+            distance.append(i.get("distance"))
+            angle.append(i.get("angle")) 
+            
+        self.move_num = move_num
+        self.position_X = range_X
+        self.position_Y = range_Y
+        self.distance = distance
+        self.angle = angle
+
+    # Uodates key data for our analysis at the end    
+    def x_against_y(self):
+        array = np.asarray(self.position_X)
+        array1 = np.percentile(array, [0, 25, 50, 75, 100])
+        array1 = array1.tolist()
+        self.range_X.append(array1)
+        
+        arr = np.asarray(self.position_Y)
+        array2 = np.percentile(arr, [0, 25, 50, 75, 100])
+        array2 = array2.tolist()
+        self.range_Y.append(array2)
+        
+        arr = np.asarray(self.distance)
+        array3 = np.percentile(arr, [0, 25, 50, 75, 100])
+        array3 = array3.tolist()
+        self.distances.append(array3)
+        
+        arr = np.asarray(self.angle)
+        array4 = np.percentile(arr, [0, 25, 50, 75, 100])
+        array4 = array4.tolist()
+        self.angles.append(array4)
+    
+    # Returns values do that we can create plots of the average journeies taken
+    def return_x_y(self, data):
+        
+        x0 = [i[0] for i in data]
+        x0_min = statistics.median_low(x0)
+        x0_mean = statistics.mean(x0)
+        x0_max = statistics.median_high(x0) 
+        
+        x25 = [i[1] for i in data]
+        x25_min = statistics.median_low(x25)
+        x25_mean = statistics.mean(x25)
+        x25_max = statistics.median_high(x25)
+        
+        x50 = [i[2] for i in data]
+        x50_min = statistics.median_low(x50)
+        x50_mean = statistics.mean(x50)
+        x50_max = statistics.median_high(x50)
+        
+        x75 = [i[3] for i in data]
+        x75_min = statistics.median_low(x75)
+        x75_mean = statistics.mean(x75)
+        x75_max = statistics.median_high(x75)
+        
+        x100 = [i[4] for i in data]
+        x100_min = statistics.median_low(x100)
+        x100_mean = statistics.mean(x100)
+        x100_max = statistics.median_high(x100)
+
+        X = [max(x100), x100_max, x100_mean, x100_min, min(x100),
+             max(x75), x75_max, x75_mean, x75_min, min(x75),
+             max(x50), x50_max, x50_mean, x50_min, min(x50),
+             max(x25), x25_max, x25_mean, x25_min, min(x25),
+             max(x0), x0_max, x0_mean, x0_min, min(x0)]
+        
+        Y = [x100_max, x100_mean, x100_min,
+            x75_max, x75_mean, x75_min, 
+            x50_max, x50_mean, x50_min,
+            x25_max, x25_mean, x25_min,
+            x0_max, x0_mean, x0_min]
+        
+        return Y
+        
+            
+
+        
+        
+    
+
+        
+# Create Maze      
+        
+mze = Create_Maze()        
+lis = []
+
+for i in range(24):
+    if i > 0:
+        mze.maze.append(lis)
+        lis = []
+    for a in range(23):
+        lis.append(Blocks(0, 0, False, False))    
+
+mze.maze_setup()
+run = Run_Maze(mze.maze)
+data = Data_Collection(run)
+run.select_table()
+print("TARGET TABLE IS", run.target_table_X, run.target_table_Y)
+
+best_route = run.return_optimal_route()
+
+# distrubution of disturbance
+run.dist_prob = 0
+
+for a in range(300):
+    run.optimal_delivey_time = run.return_optimal_route()
+    for i in range(200):
+        
+
+        run.append_data()
+        # Uncomment to Select Algorithm 
+        run.algorithm1() 
+        #run.algorithm2() 
+        
+        
+        if run.current_distance == 2 or run.move_num > 100:
+            
+            run.show_path()
+            run.append_data()
+            data.update_data()
+            data 
+            data.path_mapping = run.path_mapping
+            
+            data.return_data()
+            data.x_against_y()
+            
+            run.reset()
+            # To manually select start and target positions
+            run.target_table_X = 3
+            run.target_table_Y = 3
+            run.current_position_X = 21
+            run.current_position_Y = 21
+            
+            # To randomly select table
+            run.select_table()
+            
+            print()
+            print("Finished", run.current_distance)
+            break
+        
+X = data.return_x_y(data.range_X)
+Y = data.return_x_y(data.range_Y)
+
+# uncomment to see data 
+#X = data.disturbances 
+#Y = data.times 
+#X = data.reroutes
+#print(Y, X)
+
+print("Accuracy:",statistics.mean(data.routing_accuracies)*100)
+plt.plot( range(15), X)
+plt.xlabel("Jouney Scaled from 1-15")
+plt.ylabel("Minimization of Distance")
+plt.suptitle('Change in Horizontal Distance')
+
+
+plt.show()
+
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
